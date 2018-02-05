@@ -14,7 +14,7 @@ import re
 import os
 from os.path import join, isfile, abspath, split, dirname
 
-from . structures import *
+from structures import *
 
 
 # Try and locate a working dcm4che2 program, raising ImportError if we can't
@@ -143,7 +143,7 @@ except OSError as e:
     raise NotImplementedError(str(e))
 
 
-def dcm_pat_level_find(aet, node, port, laet, patname, patid, birthdate, sex):
+def dcm_pat_level_find(aet, node, port, laet, query_map):
     ''' Use dcm4che tool dcmqr to perform a patient level query. The result is a list
         of PatientLevelFields records.
     '''

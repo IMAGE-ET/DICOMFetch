@@ -20,12 +20,14 @@ from tempfile import mkdtemp
 import shutil
 from glob import glob
 from os.path import join, isfile, split, abspath, dirname
+from operator import attrgetter
 
-from . structures import *
+from structures import *
 
 
 # Try and locate a working dcm4che3 program, raising ImportError if we can't
-# Prepend rather than append to path as otherwise we bump into the dcmtk prog called findscu
+# Prepend rather than append to path as otherwise we bump into the dcmtk
+# prog called findscu
 def _which(program, path_prepend=None):
     '''Find program on the system path or any additional locations specified.
     '''
@@ -69,7 +71,8 @@ def _call_quietly(cmdlist):
     '''
     if os.name == 'posix':
         with open(os.devnull, 'w') as null:
-            status = subprocess.call(cmdlist, shell=USESHELL, stdout=null, stderr=null)
+            status = subprocess.call(
+                cmdlist, shell=USESHELL, stdout=null, stderr=null)
             if status != 0:
                 raise NotImplementedError(cmdlist[0])
     elif os.name == 'nt':
@@ -116,14 +119,16 @@ pkg_path = pkg_resources.resource_filename(__name__, 'ext')
 if os.name == 'posix':
     FINDSCU = _which(
         'findscu',
-        [pkg_path, '/usr/local/dcm4che3/bin', '/usr/local/dcm4che/bin', '/usr/local/bin']
+        [pkg_path, '/usr/local/dcm4che3/bin',
+            '/usr/local/dcm4che/bin', '/usr/local/bin']
     )
     if not FINDSCU:
         msg = "Can't find external dcm4che commmand 'findscu'"
         raise NotImplementedError(msg)
     GETSCU = _which(
         'getscu',
-        [pkg_path, '/usr/local/dcm4che3/bin', '/usr/local/dcm4che/bin', '/usr/local/bin']
+        [pkg_path, '/usr/local/dcm4che3/bin',
+            '/usr/local/dcm4che/bin', '/usr/local/bin']
     )
     if not FINDSCU:
         msg = "Can't find external dcm4che commmand 'getscu'"
@@ -132,14 +137,16 @@ if os.name == 'posix':
 elif os.name == 'nt':
     FINDSCU = _which(
         'findscu',
-        [pkg_path, join(r'c:/', 'dcm4che3', 'bin'), join('dcm4che', 'bin'), join('dcm4che3', 'bin'), 'bin']
+        [pkg_path, join(r'c:/', 'dcm4che3', 'bin'),
+         join('dcm4che', 'bin'), join('dcm4che3', 'bin'), 'bin']
     )
     if not FINDSCU:
         msg = "Can't find external dcm4che commmand 'findscu.bat/exe'"
         raise NotImplementedError(msg)
     GETSCU = _which(
         'getscu',
-        [pkg_path, join(r'c:/', 'dcm4che3', 'bin'), join('dcm4che', 'bin'), join('dcm4che3', 'bin'), 'bin']
+        [pkg_path, join(r'c:/', 'dcm4che3', 'bin'),
+         join('dcm4che', 'bin'), join('dcm4che3', 'bin'), 'bin']
     )
     if not GETSCU:
         msg = "Can't find external dcm4che commmand 'getscu.bat/exe'"
@@ -170,24 +177,85 @@ except OSError as e:
 
 
 # Explicit omnibus list of contexts to put into association to allow c-store
-# TODO: A better solution may be to generate this internally and so make it more configurable
+# TODO: A better solution may be to generate this internally and so make
+# it more configurable
 CONTEXTS = join(pkg_path, 'store-tcs.properties')
 
 
-def dcm_pat_level_find(aet, node, port, laet, patname, patid, birthdate, sex):
+def finder(aet, node, port, laet, level, ording_keys, **query_map):
     ''' Use dcm4che3 tool findscu to perform a patient level query.
         The result is a list of PatientLevelFields records.
     '''
     tmpdir = mkdtemp(prefix='dcmfetch')
-    if USEQUOTES:
-        # Fix up broken behaviour on windows, dicom wild cards were getting
-        # glob expanded even though we have not set shell = True
-        # But then seems to be differently broken on win7/python3
-        # so don't use quotes (or shell=True) in that case
-        patname = '"%s"' % patname
-        patid = '"%s"' % patid
-        birthdate = '"%s"' % birthdate
-        sex = '"%s"' % sex
+
+    level_map = {
+        'patient': [['-M', 'PatientRoot'], ['-L', 'PATIENT']],
+        'study': [['-M', 'PatientRoot'], ['-L', 'STUDY']],
+        'series': [['-M', 'PatientRoot'], ['-L', 'SERIES']],
+        'image': [['-M', 'PatientRoot'], ['-L', 'IMAGE']],
+    }
+
+    level_keys_map = {
+        'patient': ['PatientName', 'PatientID',
+                    'PatientBirthDate', 'PatientSex'],
+        'study': ['PatientID'], ['StudyID'], ['StudyInstanceUID'], ['StudyDate'], ['StudyDescription'],
+        'series': ['PatientID'], ['StudyInstanceUID'], ['Modality'], ['SeriesNumber'], ['SeriesInstanceUID'], ['SeriesDescription'], ['BodyPartExamined'],
+        'image': ['PatientID'], ['StudyInstanceUID'], ['SeriesInstanceUID'], ['InstanceNumber'], ['SOPInstanceUID'],
+    }
+    
+    parser_map = {
+        'patient': _parse_dcm4che_pat_level_find,
+        'study': _parse_dcm4che_stu_level_find,
+        'series': _parse_dcm4che_ser_level_find,
+        'image': _parse_dcm4che_img_level_find,
+    }
+
+    find_cmd = [FINDSCU]
+    find_cmd += ['--bind', laet]
+    find_cmd += ['--connect', '%s@%s:%s' % (aet, node, port)]
+    for level_arg in level_map[level]:
+        find_cmd += level_arg
+    find_cmd += ['-X', '-I']
+    find_cmd += ['--out-dir', tmpdir]
+    find_cmd += ['--out-file', 'match']
+
+    level_keys = level_keys_map[level]
+    for k, v in query_map.items():
+        if USEQUOTES:
+            k = '"%s"' % k
+            # Fix up broken behaviour on windows, dicom wild cards were getting
+           # glob expanded even though we have not set shell = True
+           # But then seems to be differently broken on win7/python3
+           # so don't use quotes (or shell=True) in that case
+        find_cmd += ['-m', '{key}={value}'.format(key=k, value=v)]
+        if k in level_keys:
+            level_keys.remove(k)
+        else:
+            raise Exception(
+                '{} is not the allowed key for this level'.format(k))
+    for k in level_keys:
+        find_cmd += ['-r', '{key}'.format(key=k)]
+
+    subproc = _popen_with_pipe(find_cmd)
+    output = subproc.communicate()[0]
+    if subproc.returncode != 0:
+        raise QIError("Query to %s failed: %s, Command line was %s" %
+                      (aet, output, find_cmd))
+
+    responses = [
+        parser_map[level](f) for f in glob(join(tmpdir, '*'))
+    ]
+    shutil.rmtree(tmpdir)
+    return sorted(responses, key=attrgetter(ording_keys))
+
+
+def dcm_pat_level_find(aet, node, port, laet, **query_map):
+    ''' Use dcm4che3 tool findscu to perform a patient level query.
+        The result is a list of PatientLevelFields records.
+    '''
+    level_keys = ['PatientName', 'PatientID',
+                  'PatientBirthDate', 'PatientSex']
+    tmpdir = mkdtemp(prefix='dcmfetch')
 
     find_cmd = [FINDSCU]
     find_cmd += ['--bind', laet]
@@ -198,27 +266,27 @@ def dcm_pat_level_find(aet, node, port, laet, patname, patid, birthdate, sex):
     find_cmd += ['--out-dir', tmpdir]
     find_cmd += ['--out-file', 'match']
 
-    if patname:
-        find_cmd += ['-m', 'PatientName=%s' % patname]
-    else:
-        find_cmd += ['-r', 'PatientName']
-    if patid:
-        find_cmd += ['-m', 'PatientID=%s' % patid]
-    else:
-        find_cmd += ['-r', 'PatientID']
-    if birthdate:
-        find_cmd += ['-m', 'PatientBirthDate=%s' % birthdate]
-    else:
-        find_cmd += ['-r', 'PatientBirthDate']
-    if sex:
-        find_cmd += ['-m', 'PatientSex=%s' % sex]
-    else:
-        find_cmd += ['-r', 'PatientSex']
+    for k, v in query_map.items():
+        if USEQUOTES:
+            k = '"%s"' % k
+            # Fix up broken behaviour on windows, dicom wild cards were getting
+           # glob expanded even though we have not set shell = True
+           # But then seems to be differently broken on win7/python3
+           # so don't use quotes (or shell=True) in that case
+        find_cmd += ['-m', '{key}={value}'.format(key=k, value=v)]
+        if k in level_keys:
+            level_keys.remove(k)
+        else:
+            raise Exception(
+                '{} is not the allowed key for this level'.format(k))
+    for k in level_keys:
+        find_cmd += ['-r', '{key}'.format(key=k)]
 
     subproc = _popen_with_pipe(find_cmd)
     output = subproc.communicate()[0]
     if subproc.returncode != 0:
-        raise QIError("Query to %s failed: %s, Command line was %s" % (aet, output, find_cmd))
+        raise QIError("Query to %s failed: %s, Command line was %s" %
+                      (aet, output, find_cmd))
 
     responses = [
         _parse_dcm4che_pat_level_find(f) for f in glob(join(tmpdir, '*'))
@@ -283,7 +351,8 @@ def dcm_stu_level_find(aet, node, port, laet, patid):
     output = subproc.communicate()[0]
 
     if subproc.returncode != 0:
-        raise QIError("Query to %s failed: %s, Command line was %s" % (aet, output, find_cmd))
+        raise QIError("Query to %s failed: %s, Command line was %s" %
+                      (aet, output, find_cmd))
 
     responses = [
         _parse_dcm4che_stu_level_find(f) for f in glob(join(tmpdir, '*'))
@@ -345,7 +414,8 @@ def dcm_ser_level_find(aet, node, port, laet, patid, studyuid):
     subproc = _popen_with_pipe(find_cmd)
     output = subproc.communicate()[0]
     if subproc.returncode != 0:
-        raise QIError("Query to %s failed: %s, Command line was %s" % (aet, output, find_cmd))
+        raise QIError("Query to %s failed: %s, Command line was %s" %
+                      (aet, output, find_cmd))
 
     responses = [
         _parse_dcm4che_ser_level_find(f) for f in glob(join(tmpdir, '*'))
@@ -409,7 +479,8 @@ def dcm_img_level_find(aet, node, port, laet, patid, studyuid, seriesuid):
     subproc = _popen_with_pipe(find_cmd)
     output = subproc.communicate()[0]
     if subproc.returncode != 0:
-        raise QIError("Query to %s failed: %s, Command line was %s" % (aet, output, find_cmd))
+        raise QIError("Query to %s failed: %s, Command line was %s" %
+                      (aet, output, find_cmd))
 
     responses = [
         _parse_dcm4che_img_level_find(f) for f in glob(join(tmpdir, '*'))
@@ -474,7 +545,8 @@ def dcm_ser_level_get(aet, node, port, laet, patid, studyuid, seriesuid, savedir
     # wait for termination
     subproc.communicate()
     if subproc.returncode != 0:
-        raise QIError("C-get from %s failed (%d), Command line was %s" % (aet, subproc.returncode, get_cmd))
+        raise QIError("C-get from %s failed (%d), Command line was %s" %
+                      (aet, subproc.returncode, get_cmd))
 
 
 def dcm_img_level_get(aet, node, port, laet, patid, studyuid, seriesuid, imageuid, savedir):
@@ -515,12 +587,14 @@ def dcm_img_level_get(aet, node, port, laet, patid, studyuid, seriesuid, imageui
     # wait for termination
     subproc.communicate()
     if subproc.returncode != 0:
-        raise QIError("C-get from %s failed (%d), Command line was %s" % (aet, subproc.returncode, get_cmd))
+        raise QIError("C-get from %s failed (%d), Command line was %s" %
+                      (aet, subproc.returncode, get_cmd))
     # print("subprocess termination: images in %s" % savedir)
 
 
 # unfortunately we don't seem to get the C-GET-RSP until the end
-# example: 23:00:36,960 INFO  - FINDSCU->CRICStore(1) >> 1:C-GET-RSP[pcid=1, completed=3, failed=0, warning=0, status=0H
+# example: 23:00:36,960 INFO  - FINDSCU->CRICStore(1) >>
+# 1:C-GET-RSP[pcid=1, completed=3, failed=0, warning=0, status=0H
 def _parse_cget_response(line):
     ''' Parse a line of query output that may contain a c-get info field.
         Returns None if no match to this.
@@ -539,7 +613,8 @@ def _parse_cget_response(line):
         return None
 
 
-# example: 23:00:36,845 INFO  - FINDSCU->CRICStore(1) << 4:C-STORE-RSP[pcid=87, status=0H
+# example: 23:00:36,845 INFO  - FINDSCU->CRICStore(1) <<
+# 4:C-STORE-RSP[pcid=87, status=0H
 def _parse_cstore_response(line):
     ''' Parse a line of query output that may contain a c-get info field.
         Returns None if no match to this.

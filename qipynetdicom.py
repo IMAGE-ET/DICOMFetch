@@ -36,13 +36,13 @@ from netdicom.SOPclass import (
     CTImageStorageSOPClass, MRImageStorageSOPClass, RTImageStorageSOPClass
 )
 
-from . structures import *
+from structures import *
 
 # module global
 msg_id = 1
 
 
-def dcm_pat_level_find(aet, node, port, laet, patname, patid, birthdate, sex):
+def dcm_pat_level_find(aet, node, port, laet, query_map):
     ''' Use pynetdicom to perform a patient level query. The result is a list
         of PatientLevelFields records.
     '''

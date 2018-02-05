@@ -1,0 +1,6 @@
+#
+# Example DICOM nodes file. Used as fall back if none defined
+#
+Dcm4Chee CRICStore canopus.cric.bris.ac.uk 11112 FGX
+Ctn      PHYSICSQA phobos.boc.ubht.nhs.uk  104   FGX
+
