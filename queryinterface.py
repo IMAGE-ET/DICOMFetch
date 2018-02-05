@@ -7,13 +7,23 @@ import os
 
 from aettable import AetTable
 from dicomweb import *
+from collections import namedtuple
 
 toolkit = os.environ.get('DCMTOOLKIT', None)
 toolkits = ['dcm4che3', 'dcm4che', 'pynetdicom', 'mock']
 if toolkit:
     toolkits.insert(0, toolkit)
 
-from pydcm4che3 import finder, geter, Parser
+from pydcm4che3 import finder, getter, Parser
+
+CGetResponse = namedtuple(
+    'CGetResponse',
+    'pcid, remaining, completed, failed, warning, status'
+)
+CStoreResponse = namedtuple(
+    'CStoreResponse',
+    'pcid, status'
+)
 
 query_level_souported = {
     'W': {
@@ -37,7 +47,7 @@ fetch_level_souported = {
         'series': rst_ser_level_find,
         'image': rst_img_level_find,
     },
-    'F': {
+    'G': {
         'patient': getter,
         'study': getter,
         'series': getter,
@@ -61,6 +71,48 @@ class Interface(object):
             localaet = node().split('.')[0].replace('-', '')[:11] + 'Store'
         self.aettable = aettable
         self.localaet = localaet
+
+    def fetch(self, servername, level, save_dir, **query_map):
+        """ Fetch an image series from the dicom server.
+            Implement as C-GET only for now."""
+        print('####################')
+        if servername not in self.aettable:
+            raise QIError("%s is not in dicom node table" % servername)
+        server = self.aettable[servername]
+        completed = 0
+        remaining = -1
+        server_mark = None
+        if 'W' in server.facilities:
+            server_mark = 'W'
+        elif 'G' in server.facilities:
+            server_mark = 'G'
+        getter = fetch_level_souported[server_mark][level]
+        if server_mark == 'W':
+            fetch_iter = rst_ser_level_get(
+                endpoint=server.aet, node=server.host,
+                port=server.port, auth=server.auth,
+                **query_map)
+        elif server_mark == 'G':
+            fetch_iter = getter(
+                aet=server.aet, node=server.host,
+                port=server.port, laet=self.localaet,
+                level=level, savedir=save_dir, **query_map)
+        else:
+            raise QIError(
+                "%s supports neither direct (c-get) retrieve operations nor a web rest api" % servername)
+        response = None
+        for response in fetch_iter:
+            if type(response) == CGetResponse:
+                completed = response.completed
+                remaining = response.remaining
+                yield (completed, remaining)
+            elif type(response) == CStoreResponse:
+                completed += 1
+                yield (completed, remaining)
+        if response is None:
+            return
+        if response.status != 0:
+            raise QIError("cget final response status non zero (%x)" % response.status)
 
     def query(self, servername, level, parser, ording_key=None, **query_map):
         ''' query interface to query the dicom files.
@@ -104,50 +156,6 @@ class Interface(object):
             return sorted(res, key=attrgetter(ording_key))
         return res
 
-    def fetch(self, servername, level, **query_map):
-        ''' Fetch an image series from the dicom server.
-            Implement as C-GET only for now.
-        '''
-        # TODO: see if there is a way of using c-move
-        if servername not in self.aettable:
-            raise QIError("%s is not in dicom node table" % servername)
-        server = self.aettable[servername]
-
-        completed = 0
-        remaining = -1
-        getter = fetch_level_souported[level]
-        if 'W' in server.facilities:
-            fetch_iter = rst_ser_level_get(
-                endpoint=server.aet, node=server.host,
-                port=server.port, auth=server.auth,
-                **query_map)
-        elif 'G' in server.facilities:
-            fetch_iter = getter(
-                aet=server.aet, node=server.host,
-                port=server.port, laet=self.localaet,
-                patid=patid, **query_map)
-        else:
-            raise QIError(
-                "%s supports neither direct (c-get) retrieve operations nor a web rest api" % servername)
-
-        response = None
-        for response in fetch_iter:
-            if type(response) == CGetResponse:
-                completed = response.completed
-                remaining = response.remaining
-                yield (completed, remaining)
-            elif type(response) == CStoreResponse:
-                completed += 1
-                yield (completed, remaining)
-
-        if response is None:
-            return
-
-        if response.status != 0:
-            raise QIError("cget final response status non zero (%x)" %
-                          response.status)
-
-        return
 
 if __name__ == '__main__':
     interface = Interface()
@@ -159,20 +167,28 @@ if __name__ == '__main__':
     query_map = {
         'PatientID': '',
         'PatientName': '',
-        'StudyID': '', 
-        'StudyInstanceUID': '', 
-        'StudyDate': '20160906', 
+        'StudyID': '',
+        'StudyInstanceUID': '',
+        'StudyDate': '20160906',
     }
 
-    studies = interface.query(servername='testServer',
+    query_maps = interface.query(servername='testServer',
                               level='study', parser=Parser.tag_parser, **query_map)
-    # query_map = {
-    #     'PatientID': patients[0].PatientID, 'StudyInstanceUID': studies[0].StudyUID, 'SeriesInstanceUID': series[0].SeriesUID,
-    # }
-    # images = interface.query(servername='testServer',
-    # level='images', parser=Parser.tag_parser, **query_map)
-    print(studies)
-    for study in studies:
-        if study['StudyDate'] != query_map['StudyDate']:
-            print('not all the StudyDate is the same')
+    for query_map in query_maps:
+        print('study', query_map)
+        query_map.update({
+            'SeriesInstanceUID': '',
+        })
+        _query_maps = interface.query(servername='testServer', level='series', parser=Parser.tag_parser, **query_map)
+        print('series', _query_maps)
+        for query_map in _query_maps:
+            query_map.update({
+                'SOPInstanceUID': '',
+            })
+            __query_maps = interface.query(servername='testServer', level='image', parser=Parser.tag_parser, **query_map)
+            print('image', __query_maps)
+            for query_map in __query_maps:
+                print('fetch', query_map)
+                for i in interface.fetch(servername='testServer', level='image', save_dir='./', **query_map):
+                    print(i)
 

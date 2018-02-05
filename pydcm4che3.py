@@ -203,7 +203,7 @@ class Parser(object):
         return _tags
 
 
-def combo_cmd(cmd):
+def combo_cmd(cmd, type, query_map, level):
     level_map = {
         'patient': [['-M', 'PatientRoot'], ['-L', 'PATIENT']],
         'study': [['-M', 'StudyRoot'], ['-L', 'STUDY']],
@@ -225,7 +225,10 @@ def combo_cmd(cmd):
     level_required_keys = level_required_keys_map[level]
     for k, v in query_map.items():
         if v == '':
-            cmd += ['-r', '{key}'.format(key=k)]
+            if type == 'query':
+                cmd += ['-r', '{key}'.format(key=k)]
+            else:
+                cmd += ['-i', '{key}'.format(key=k)]
             continue
         if USEQUOTES:
             k = '"%s"' % k
@@ -234,7 +237,10 @@ def combo_cmd(cmd):
             level_required_keys.remove(k)
 
     for k in level_required_keys:
-        cmd += ['-r', '{key}'.format(key=k)]
+        if type == 'query':
+            cmd += ['-r', '{key}'.format(key=k)]
+        else:
+            cmd += ['-i', '{key}'.format(key=k)]
     return cmd
 
 
@@ -246,7 +252,7 @@ def finder(aet, node, port, laet, level,  parser, ording_key=None, **query_map):
     find_cmd = [FINDSCU]
     find_cmd += ['--bind', laet]
     find_cmd += ['--connect', '%s@%s:%s' % (aet, node, port)]
-    find_cmd = combo_cmd(find_cmd)
+    find_cmd = combo_cmd(find_cmd, 'query', query_map, level)
     find_cmd += ['-X', '-I']
     find_cmd += ['--out-dir', tmpdir]
     find_cmd += ['--out-file', 'match']
@@ -267,15 +273,15 @@ def finder(aet, node, port, laet, level,  parser, ording_key=None, **query_map):
     return responses
 
 
-def geter(aet, node, port, laet, level, savedir, **query_map):
+def getter(aet, node, port, laet, level, savedir, **query_map):
     get_cmd = [GETSCU]
     get_cmd += ['--bind', laet]
     get_cmd += ['--connect', '%s@%s:%s' % (aet, node, port)]
-    get_cmd = combo_cmd(get_cmd)
+    get_cmd = combo_cmd(get_cmd, 'fetch', query_map, level)
     get_cmd += ['--directory', savedir]
     if isfile(CONTEXTS):
         get_cmd += ['--store-tcs', CONTEXTS]
-
+    print(get_cmd)
     subproc = _popen_with_pipe(get_cmd)
 
     # get lines of output from command
