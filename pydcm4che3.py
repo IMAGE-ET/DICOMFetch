@@ -281,7 +281,7 @@ def getter(aet, node, port, laet, level, savedir, **query_map):
     get_cmd += ['--directory', savedir]
     if isfile(CONTEXTS):
         get_cmd += ['--store-tcs', CONTEXTS]
-    print(get_cmd)
+    print(' '.join(get_cmd))
     subproc = _popen_with_pipe(get_cmd)
 
     # get lines of output from command

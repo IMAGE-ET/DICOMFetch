@@ -164,31 +164,41 @@ if __name__ == '__main__':
     print(interface.aettable)
     print('Local AET =', interface.localaet)
 
-    query_map = {
-        'PatientID': '',
-        'PatientName': '',
-        'StudyID': '',
-        'StudyInstanceUID': '',
-        'StudyDate': '20160906',
-    }
+    # query_map = {
+    #     'PatientID': '',
+    #     'PatientName': '',
+    #     'PatientSex': '',
+    #     'StudyID': '',
+    #     'StudyInstanceUID': '',
+    #     'StudyDate': '20180205',
+    # }
 
-    query_maps = interface.query(servername='testServer',
-                              level='study', parser=Parser.tag_parser, **query_map)
-    for query_map in query_maps:
-        print('study', query_map)
-        query_map.update({
-            'SeriesInstanceUID': '',
-        })
-        _query_maps = interface.query(servername='testServer', level='series', parser=Parser.tag_parser, **query_map)
-        print('series', _query_maps)
-        for query_map in _query_maps:
-            query_map.update({
-                'SOPInstanceUID': '',
-            })
-            __query_maps = interface.query(servername='testServer', level='image', parser=Parser.tag_parser, **query_map)
-            print('image', __query_maps)
-            for query_map in __query_maps:
-                print('fetch', query_map)
-                for i in interface.fetch(servername='testServer', level='image', save_dir='./', **query_map):
-                    print(i)
+    # query_maps = interface.query(servername='Server',
+    #                           level='study', parser=Parser.tag_parser, **query_map)
+    # print(query_maps[:10])
+    # for query_map in query_maps[:10]:
+    #     print('study', query_map)
+    #     query_map.update({
+    #         'SeriesInstanceUID': '',
+    #     })
+    #     _query_maps = interface.query(servername='Server', level='series', parser=Parser.tag_parser, **query_map)
+    #     print('series', _query_maps)
+    #     for query_map in _query_maps:
+    #         query_map.update({
+    #             'SOPInstanceUID': '',
+    #         })
+    #         __query_maps = interface.query(servername='Server', level='image', parser=Parser.tag_parser, **query_map)
+    #         print('image', __query_maps)
+    #         for query_map in __query_maps:
+    #             print('fetch', query_map)
+    query_map = {
+    'SOPInstanceUID': 'AU614718.2018-02-0515:27:23', 
+    'PatientID': '02401845', 
+    # 'PatientSex': 'M', 
+    'StudyInstanceUID': 'APPLYSHEET614718', 
+    'SeriesInstanceUID': 'APPLYSHEET6147181'}
+    query_maps = interface.query(servername='Server',
+                              level='image', parser=Parser.tag_parser, **query_map)
+    print(query_maps)
+    # list(interface.fetch(servername='Server', level='series', save_dir='./', **query_map))
 
