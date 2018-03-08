@@ -5,8 +5,8 @@ from platform import node
 from importlib import import_module
 import os
 
-from aettable import AetTable
-from dicomweb import *
+from .aettable import AetTable
+from .dicomweb import *
 from collections import namedtuple
 
 toolkit = os.environ.get('DCMTOOLKIT', None)
@@ -14,7 +14,7 @@ toolkits = ['dcm4che3', 'dcm4che', 'pynetdicom', 'mock']
 if toolkit:
     toolkits.insert(0, toolkit)
 
-from pydcm4che3 import finder, getter, Parser
+from .pydcm4che3 import finder, getter, Parser
 
 CGetResponse = namedtuple(
     'CGetResponse',
@@ -192,11 +192,12 @@ if __name__ == '__main__':
     #         for query_map in __query_maps:
     #             print('fetch', query_map)
     query_map = {
-    'SOPInstanceUID': 'AU614718.2018-02-0515:27:23', 
-    'PatientID': '02401845', 
-    # 'PatientSex': 'M', 
-    'StudyInstanceUID': 'APPLYSHEET614718', 
-    'SeriesInstanceUID': 'APPLYSHEET6147181'}
+        'SOPInstanceUID': 'AU614718.2018-02-0515:27:23', 
+        'PatientID': '02401845', 
+        'PatientSex': 'M', 
+        'StudyInstanceUID': 'APPLYSHEET614718', 
+        'SeriesInstanceUID': 'APPLYSHEET6147181'
+    }
     query_maps = interface.query(servername='Server',
                               level='image', parser=Parser.tag_parser, **query_map)
     print(query_maps)

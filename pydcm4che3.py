@@ -21,7 +21,7 @@ import shutil
 from glob import glob
 from os.path import join, isfile, split, abspath, dirname
 from operator import attrgetter
-from structures import *
+from .structures import *
 
 
 # Try and locate a working dcm4che3 program, raising ImportError if we can't
@@ -132,7 +132,8 @@ if os.name == 'posix':
     if not FINDSCU:
         msg = "Can't find external dcm4che commmand 'getscu'"
         raise NotImplementedError(msg)
-    USEQUOTES = USESHELL = False
+    USESHELL = False
+    USEQUOTES = False
 elif os.name == 'nt':
     FINDSCU = _which(
         'findscu',
@@ -232,7 +233,9 @@ def combo_cmd(cmd, type, query_map, level):
             continue
         if USEQUOTES:
             k = '"%s"' % k
-        cmd += ['-m', '{key}={value}'.format(key=k, value=v)]
+        if ' ' in v:
+            v = "'{}'".format(v)
+        cmd += ['-m', "{key}={value}".format(key=k, value=v)]
         if k in level_required_keys:
             level_required_keys.remove(k)
 

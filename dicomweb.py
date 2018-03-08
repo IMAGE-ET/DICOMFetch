@@ -17,7 +17,7 @@ from os.path import join
 import email
 import requests
 
-from structures import (
+from .structures import (
     PatientLevelFields, StudyLevelFields,
     SeriesLevelFields, ImageLevelFields,
     CStoreResponse

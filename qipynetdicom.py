@@ -36,7 +36,7 @@ from netdicom.SOPclass import (
     CTImageStorageSOPClass, MRImageStorageSOPClass, RTImageStorageSOPClass
 )
 
-from structures import *
+from .structures import *
 
 # module global
 msg_id = 1

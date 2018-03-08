@@ -14,7 +14,7 @@ import re
 import os
 from os.path import join, isfile, abspath, split, dirname
 
-from structures import *
+from .structures import *
 
 
 # Try and locate a working dcm4che2 program, raising ImportError if we can't

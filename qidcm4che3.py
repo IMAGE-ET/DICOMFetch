@@ -22,7 +22,7 @@ from glob import glob
 from os.path import join, isfile, split, abspath, dirname
 from operator import attrgetter
 
-from structures import *
+from .structures import *
 
 
 # Try and locate a working dcm4che3 program, raising ImportError if we can't
